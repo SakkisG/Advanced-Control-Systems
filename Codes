@@ -42,8 +42,8 @@ print(df.describe().T) # βασικά στατιστικά
 
 print("\n #################### Question 1 ########################## \n")
 # Ερώτημα 1 - Μερικά διαγράμματα για ανάλυση του dataset 
-df_small = df.sample(5000, random_state=42) # γιατί είναι πολλά τα δεδομένα
-df_no_time = df_small.drop(columns=["Time"]) # ο χρόνος δεν έχει νόημα, είναι ένα index
+# df_small = df.sample(5000, random_state=42) # γιατί είναι πολλά τα δεδομένα
+df_no_time = df.drop(columns=["Time"]) # ο χρόνος δεν έχει νόημα, είναι ένα index
 
 def heatmap(df,title):
      # correlation heatmap για να δούμε τις συσχετίσεις μεταξύ των μεταβλητών
@@ -67,7 +67,7 @@ def heatmap(df,title):
     plot=plt.show()
     return plot
 
-# heatmap(df_no_time, "Initial Correlation Matrix")
+heatmap(df_no_time, "Initial Correlation Matrix")
 
 # scatter plots for high correlation pairs
 scatter_pairs = [
@@ -97,22 +97,22 @@ scatter_pairs = [
     ("EGR Command", "Exhaust Gas Temperature"),
 ]
 
-# for x_col, y_col in scatter_pairs:
-#     fig,ax=plt.subplots(figsize=(6, 4.5))
-#     ax.scatter(df_small[x_col], df_small[y_col], color='#9671bd', s = 45, 
-#                edgecolors = '#6a408d',
-#                linewidths = 1.5,
-#                zorder = 3)
-#     ax.set_xlabel(x_col)
-#     ax.set_ylabel(y_col)
-#     ax.set_title(f"{y_col} vs {x_col}")
-#     ax.grid(True, which='major', linestyle='-', linewidth=0.75, alpha=0.25) # transparent major grid
-#     ax.minorticks_on()
-#     ax.grid(True,which='minor', linestyle='-', linewidth=0.25, alpha=0.15) # transparent minor grid
-#     ax.set_axisbelow(True) # to get grid below data
-#     plt.tight_layout()
-#     plt.show()
-
+for x_col, y_col in scatter_pairs:
+    fig,ax=plt.subplots(figsize=(6, 4.5))
+    ax.scatter(df[x_col], df[y_col], color='#9671bd', s = 45, 
+               edgecolors = '#6a408d',
+               linewidths = 1.5,
+               zorder = 3)
+    ax.set_xlabel(x_col)
+    ax.set_ylabel(y_col)
+    ax.set_title(f"{y_col} vs {x_col}")
+    ax.grid(True, which='major', linestyle='-', linewidth=0.75, alpha=0.25) # transparent major grid
+    ax.minorticks_on()
+    ax.grid(True,which='minor', linestyle='-', linewidth=0.25, alpha=0.15) # transparent minor grid
+    ax.set_axisbelow(True) # to get grid below data
+    plt.tight_layout()
+    plt.show()
+    
 print("\n #################### Question 2 ########################## \n")
 # Ερώτημα 2 - Φιλτράρισμα δεδομένων και δημιουργία νέων features
 df = df[(df.drop(columns=["Time"]) > 0).all(axis=1)] # όλα τα μεγέθη πρέπει να έχουν θετικές τιμές
@@ -152,27 +152,29 @@ print(df.shape) # για να δούμε πόσα δεδομένα έμεινα�
 file_path_data=os.path.join(folder_path, "data.csv")
 df.to_csv(file_path_data, sep='\t', index=False)
 
-# heatmap(df, "Filtered Correlation Matrix")
+heatmap(df, "Filtered Correlation Matrix")
 
 # feature engineering
 df["Power"] = df["Engine Torque"] * df["Rot. Speed"] # Power
 df["Thermal_Load"] = df["Engine Torque"] * df["Exhaust Gas Temperature"]
 df["EGR_Torque"] = df["Engine Torque"] * df["EGR Command"]
 df["EGMF_Torque"] = df["Engine Torque"] * df["Exhaust Gas Mass Flow"]
-# heatmap(df, "Correlation Matrix with Features")
+heatmap(df, "Correlation Matrix with Features")
 
-# sort by rpm from low to high
-df=pd.DataFrame(df) 
-df_sorted=df.sort_values(by="Rot. Speed")
+# γκρουπάρισμα με βάση τα rpm, γιατι στα δεδομένα παρατηρούνται clusters
+df["rpm_group"] = (df["Rot. Speed"] / 100).round().astype(int) * 100
+print(df["rpm_group"].value_counts().sort_index())
+
 file_path_sorted=os.path.join(folder_path, "data_sorted.csv")
-df_sorted.to_csv(file_path_sorted, sep='\t', index=False)
+df.to_csv(file_path_sorted, sep='\t', index=False)
 
 print("\n #################### Question 3 ########################## \n")
 # Ερώτημα 3 - Split των δεδομένων σε training, validation και test set
 # input data και target πρόβλεψης
-X = df_sorted.drop(columns=["NOx", "Fuel Consumption", "Intake Pressure", "lambda"]) 
+X = df.drop(columns=["NOx", "Fuel Consumption", "Intake Pressure", "lambda", "rpm_group"]) 
+print(X.columns)
 # αφαιρούμε τα μεγέθη που δεν έχουν νόημα για την πρόβλεψη των NOx (time) ή είναι πολύ άμεσα συνδεδεμένα με αυτά
-y = df_sorted["NOx"]
+y = df["NOx"]
 
 # Βασικά χαρακτηριστικά του μοντέλου
 hidden_size = 20   # αριθμός νευρώνων 
@@ -195,19 +197,39 @@ class NNModel(nn.Module):
 loss_function = nn.MSELoss() # γιατί είναι πρόβλεψη συνεχούς μεγέθους, οπότε τιμωρούμε παραπάνω τις πιο απομακρυσμένες προβλέψεις
 
 # Training
-epochs = 100 # αριθμός περασμάτων του dataset για να μάθει το μοντέλο, μπορεί να χρειαστεί περισσότερα ή λιγότερα ανάλογα με την σύγκλιση του loss
-
-def run_neural_network(X, y, model_name, scaled_xlabel, scaled_ylabel, real_xlabel, real_ylabel, plot_title_loss, plot_title_scaled, plot_title_real):
+def run_neural_network(X, y, model_name, epochs, scaled_xlabel, scaled_ylabel, real_xlabel, real_ylabel, plot_title_loss, plot_title_scaled, plot_title_real):
     print("\n #################### " + model_name + " Model ########################## \n")
-    # training set (70%), validation set (10%) nad test set (20%)
-    split_point = int(len(df_sorted) * 0.7)
-    split_point_2 = int(len(df_sorted) * 0.8)
-    X_train = X.iloc[:split_point]
-    X_val = X.iloc[split_point:split_point_2]
-    X_test = X.iloc[split_point_2:]
-    y_train = y.iloc[:split_point]
-    y_val = y.iloc[split_point:split_point_2]
-    y_test = y.iloc[split_point_2:]
+    # training set (70%), validation set (10%) and test set (20%)
+    rpm_groups = df["rpm_group"].unique()
+    # Split ανά ομάδα στροφών
+    train_groups, rest_groups = train_test_split(
+        rpm_groups,
+        test_size=0.3,
+        random_state=42
+    )
+
+    val_groups, test_groups = train_test_split(
+        rest_groups,
+        test_size=20/30,
+        random_state=42
+    )
+    # Έλεγχος των ομάδων rpm του κάθε set
+    print("Train RPM groups:", sorted(train_groups))
+    print("Validation RPM groups:", sorted(val_groups))
+    print("Test RPM groups:", sorted(test_groups))
+
+    # masks για να επιλεχθούν όλα τα data rows της κάθε ομάδας στροφών
+    train_mask = df["rpm_group"].isin(train_groups)
+    val_mask = df["rpm_group"].isin(val_groups)
+    test_mask = df["rpm_group"].isin(test_groups)
+
+    # Εφαρμογή των masks για τα τελικά sets
+    X_train = X.loc[train_mask]
+    X_val = X.loc[val_mask]
+    X_test = X.loc[test_mask]
+    y_train = y.loc[train_mask]
+    y_val = y.loc[val_mask]
+    y_test = y.loc[test_mask]
 
     # Κανονικοποίηση των δεδομένων
     x_scaler = StandardScaler() # κανονικόποιση ως z = (x - μ) / σ, γιατί δουλεύει καλά με ReLU
@@ -346,12 +368,19 @@ def run_neural_network(X, y, model_name, scaled_xlabel, scaled_ylabel, real_xlab
     plt.tight_layout()
     plt.show()
 
+    rmse_real = math.sqrt(
+    ((y_test_real - y_test_pred_real) ** 2).mean()
+)
+
+    print("Real RMSE:", rmse_real)
+
 # Ερώτημα 4a - Κατασκεύη του νευρωνικού για την πρόβλεψη των NOx
 
 run_neural_network(
     X,
     df["NOx"],
     "NOx",
+    300, # epochs: αριθμός περασμάτων του dataset για να μάθει το μοντέλο
     "Actual NOx (scaled)",
     "Predicted NOx (scaled)",
     "Actual NOx [ppm]",
@@ -367,6 +396,7 @@ run_neural_network(
     X,
     df["Fuel Consumption"],
     "Fuel",
+    150,
     "Actual Fuel Consumption (scaled)",
     "Predicted Fuel Consumption (scaled)",
     "Actual Fuel Consumption [kg/h]",
@@ -382,6 +412,7 @@ run_neural_network(
     X,
     df["Intake Pressure"],
     "Intake Pressure",
+    150,
     "Actual Intake Pressure (scaled)",
     "Predicted Intake Pressure (scaled)",
     "Actual Intake Pressure [kPa]",
@@ -397,6 +428,7 @@ run_neural_network(
     X,
     df["lambda"],
     "lambda",
+    300,
     "Actual lambda (scaled)",
     "Predicted lambda (scaled)",
     "Actual lambda",
